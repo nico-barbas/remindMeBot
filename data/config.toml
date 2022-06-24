@@ -1,0 +1,7 @@
+taskCounter = 0
+taskReminderFrequency = 30
+
+[reminderAlarmTime]
+firstAlarm = 1
+secondAlarm = 120
+thridAlarm = 30

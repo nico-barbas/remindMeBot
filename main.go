@@ -12,7 +12,7 @@ import (
 const botToken = "OTg5NjM0NTczMjM3Mzc0OTc2.GDTNFt.7wNZR3_WGMLpI5rUvtB1ZSByCzXEcSslcknitU"
 
 func main() {
-	db, err := genji.Open("remindme")
+	db, err := genji.Open("./data/remindme")
 	if err != nil {
 		log.Panicln(err)
 	}

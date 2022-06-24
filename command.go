@@ -23,6 +23,7 @@ const (
 	commandBriefMe
 	commandRemindMe
 	commandStaffMe
+	commandRemoveMe
 	commandShowTodo
 	commandShowReminders
 )
@@ -31,6 +32,7 @@ var commandKeywords = map[string]commandKind{
 	"briefme":    commandBriefMe,
 	"remindme":   commandRemindMe,
 	"staffme":    commandStaffMe,
+	"removeme":   commandRemoveMe,
 	"showtodo":   commandShowTodo,
 	"showremind": commandShowReminders,
 }
@@ -49,6 +51,25 @@ type (
 		identifier string
 		sepToken   token
 		date       date
+	}
+
+	staffMeCommand struct {
+		kind       commandKind
+		token      token
+		cmdToken   token
+		identifier string
+		sepToken   token
+		hasDueDate bool
+		date       date
+	}
+
+	removeMeCommand struct {
+		kind       commandKind
+		token      token
+		cmdToken   token
+		list       token
+		sepToken   token
+		identifier string
 	}
 )
 
@@ -103,9 +124,10 @@ func (r *remindMeCommand) getKind() commandKind { return r.kind }
 func (r *remindMeCommand) String() string       { return "Remind me!" }
 func (r *remindMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed, it *item) {
 	u.reminders = append(u.reminders, item{
-		id:   theApp.genTaskID(),
-		name: r.identifier,
-		kind: itemReminder,
+		id:         theApp.genTaskID(),
+		name:       r.identifier,
+		kind:       itemTask,
+		hasDueDate: true,
 		dueTime: time.Date(
 			r.date.year, r.date.month, r.date.day,
 			r.date.hour, r.date.min, 0, 0, time.Local,
@@ -119,6 +141,85 @@ func (r *remindMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed
 		Type:        discordgo.EmbedTypeRich,
 		Title:       r.String(),
 		Description: "Reminder has been added",
+	}
+	return
+}
+
+func (s *staffMeCommand) getKind() commandKind { return s.kind }
+func (s *staffMeCommand) String() string       { return "Staff me!" }
+func (s *staffMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed, it *item) {
+	u.tasks = append(u.tasks, item{
+		id:           theApp.genTaskID(),
+		name:         s.identifier,
+		kind:         itemReminder,
+		hasDueDate:   s.hasDueDate,
+		needReminder: true,
+		done:         false,
+	})
+	it = &u.tasks[len(u.tasks)-1]
+	if s.hasDueDate {
+		it.dueTime = time.Date(
+			s.date.year, s.date.month, s.date.day,
+			s.date.hour, s.date.min, 0, 0, time.Local,
+		)
+	}
+
+	confirmation = &discordgo.MessageEmbed{
+		Type:        discordgo.EmbedTypeRich,
+		Title:       s.String(),
+		Description: "Task has been added",
+	}
+	return
+}
+
+func (r *removeMeCommand) getKind() commandKind { return r.kind }
+func (r *removeMeCommand) String() string       { return "Staff me!" }
+func (r *removeMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed, it *item) {
+	found := false
+	removed := &item{}
+	switch r.list.kind {
+	case tokenReminder:
+		for i, item := range u.reminders {
+			if item.name == r.identifier {
+				found = true
+				*removed = item
+				if len(u.reminders) > 1 {
+					copy(u.reminders[i-1:], u.reminders[i:])
+				} else {
+					u.reminders = u.reminders[:0]
+				}
+				break
+			}
+		}
+	case tokenTask:
+		for i, item := range u.tasks {
+			if item.name == r.identifier {
+				found = true
+				*removed = item
+				if len(u.tasks) > 1 {
+					copy(u.tasks[i-1:], u.tasks[i:])
+				} else {
+					u.tasks = u.tasks[:0]
+				}
+				break
+			}
+		}
+	}
+
+	listName := "reminder"
+	if r.list.kind == tokenTask {
+		listName = "task"
+	}
+
+	confirmation = &discordgo.MessageEmbed{
+		Type:  discordgo.EmbedTypeRich,
+		Title: r.String(),
+	}
+	if found {
+		confirmation.Description = fmt.Sprintf("%s has been removed", listName)
+		it = removed
+	} else {
+		confirmation.Description = fmt.Sprintf("%s %s does not exist", listName, r.identifier)
 	}
 	return
 }

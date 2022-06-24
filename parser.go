@@ -36,12 +36,27 @@ func parseCommand(input string) (result command, err parserError) {
 			switch cmdKind {
 			case commandBriefMe:
 				result, err = parser.parseBriefMeCmd()
+				if !err.isOK() {
+					return
+				}
 
 			case commandRemindMe:
 				result, err = parser.parseRemindMeCmd()
+				if !err.isOK() {
+					return
+				}
 
 			case commandStaffMe:
-				// result, err = parser.parseStaffMeCmd()
+				result, err = parser.parseStaffMeCmd()
+				if !err.isOK() {
+					return
+				}
+
+			case commandRemoveMe:
+				result, err = parser.parseRemoveMeCmd()
+				if !err.isOK() {
+					return
+				}
 
 			case commandShowTodo:
 				// result, err = parser.parseShowTodoCmd()
@@ -123,7 +138,70 @@ func (self *parser) parseRemindMeCmd() (result *remindMeCommand, err parserError
 		token:    self.previous,
 		cmdToken: self.current,
 	}
+	result.identifier, err = self.parseIdentifier()
+	if !err.isOK() {
+		return
+	}
+	result.sepToken = self.current
 
+	result.date, err = self.parseDate()
+	return
+}
+
+func (self *parser) parseStaffMeCmd() (result *staffMeCommand, err parserError) {
+	result = &staffMeCommand{
+		kind:     commandStaffMe,
+		token:    self.previous,
+		cmdToken: self.current,
+	}
+	result.identifier, err = self.parseIdentifier()
+	if !err.isOK() {
+		return
+	}
+
+	if self.current.kind == tokenSeparator {
+		result.sepToken = self.current
+		result.hasDueDate = true
+		result.date, err = self.parseDate()
+	}
+	return
+}
+
+func (self *parser) parseRemoveMeCmd() (result *removeMeCommand, err parserError) {
+	result = &removeMeCommand{
+		kind:     commandRemoveMe,
+		token:    self.previous,
+		cmdToken: self.current,
+	}
+
+	var next token
+	if next, err = self.consume(); !err.isOK() {
+		return
+	}
+	if !(next.kind == tokenTask || next.kind == tokenReminder) {
+		err = parserError{
+			kind:  errorInvalidSyntax,
+			token: next,
+			details: fmt.Sprintf(
+				"Expected %s or %s, got %s",
+				tokenKindString[tokenReminder],
+				tokenKindString[tokenTask],
+				tokenKindString[next.kind],
+			),
+		}
+		return
+	}
+	result.list = next
+
+	if err = self.expectNext(tokenSeparator); !err.isOK() {
+		return
+	}
+	result.sepToken = self.current
+	result.identifier, err = self.parseIdentifier()
+	return
+}
+
+func (self *parser) parseIdentifier() (identifier string, err parserError) {
 	var next token
 	var start token
 	var end token
@@ -144,15 +222,15 @@ func (self *parser) parseRemindMeCmd() (result *remindMeCommand, err parserError
 	}
 
 	start = next
-parseIdentifier:
+loop:
 	for {
 		if next, err = self.consume(); !err.isOK() {
 			return
 		}
 		switch {
-		case next.kind == tokenSeparator:
+		case next.kind == tokenSeparator || next.kind == tokenEOF:
 			end = self.previous
-			break parseIdentifier
+			break loop
 		case next.kind == tokenIdentifier || next.kind == tokenEmote || next.kind == tokenNumber:
 			continue
 
@@ -171,10 +249,7 @@ parseIdentifier:
 			return
 		}
 	}
-	result.identifier = string(self.lexer.input[start.start:end.end])
-	result.sepToken = self.current
-
-	result.date, err = self.parseDate()
+	identifier = string(self.lexer.input[start.start:end.end])
 	return
 }
 
@@ -284,6 +359,11 @@ const (
 	tokenDoubleDash
 	tokenColon
 	tokenSeparator
+
+	tokenReminder
+	tokenTask
+	tokenToday
+	tokenTomorrow
 )
 
 var tokenKindString = map[tokenKind]string{
@@ -297,6 +377,13 @@ var tokenKindString = map[tokenKind]string{
 	tokenDoubleDash: "tokenDoubleDash",
 	tokenColon:      "tokenColon",
 	tokenSeparator:  "tokenSeparator",
+}
+
+var keywords = map[string]tokenKind{
+	"reminder": tokenReminder,
+	"task":     tokenTask,
+	"today":    tokenToday,
+	"tomorrow": tokenTomorrow,
 }
 
 func (t token) String() string {
@@ -364,7 +451,6 @@ func (self *parser) scanToken() (result token, err parserError) {
 	default:
 		switch {
 		case isLetter(c):
-			result.kind = tokenIdentifier
 		lexIdentifier:
 			for {
 				if self.isEOF() {
@@ -376,6 +462,13 @@ func (self *parser) scanToken() (result token, err parserError) {
 				}
 				self.advance()
 			}
+			word := string(self.lexer.input[result.start:self.lexer.current])
+			if keyword, exist := keywords[word]; exist {
+				result.kind = keyword
+			} else {
+				result.kind = tokenIdentifier
+			}
+
 		case isNumber(c):
 			result.kind = tokenNumber
 		lexNumber:

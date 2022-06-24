@@ -8,12 +8,14 @@ import (
 func TestLexer(t *testing.T) {
 	inputs := []string{
 		"12", "remind", ":myemote:", "!", "-", "--", ":", "|",
+		"reminder", "task", "today", "tomorrow",
 	}
 
 	const tokenCountPerInput = 2
 	expects := []tokenKind{
 		tokenNumber, tokenIdentifier, tokenEmote,
 		tokenBang, tokenDash, tokenDoubleDash, tokenColon, tokenSeparator,
+		tokenReminder, tokenTask, tokenToday, tokenTomorrow,
 	}
 
 	parser := parser{}
@@ -205,6 +207,127 @@ func TestParseRemindMeCmd(t *testing.T) {
 				expect.date,
 				r.date,
 			)
+		}
+	}
+}
+
+func TestParseStaffMeCmd(t *testing.T) {
+	inputs := []string{
+		"!staffme finish writing unit tests | 18:30",
+		"!staffme finish writing unit tests",
+	}
+
+	y, m, d := time.Now().Date()
+	expects := []staffMeCommand{
+		{
+			kind:       commandStaffMe,
+			identifier: "finish writing unit tests",
+			hasDueDate: true,
+			date:       date{day: d, month: m, year: y, hour: 18, min: 30},
+		},
+		{
+			kind:       commandStaffMe,
+			identifier: "finish writing unit tests",
+			hasDueDate: false,
+		},
+	}
+
+	for i, input := range inputs {
+		t.Logf("input %d", i)
+		result, err := parseCommand(input)
+		if !err.isOK() {
+			t.Errorf("parsing error: %s", err.details)
+		}
+
+		expect := expects[i]
+		switch r := result.(type) {
+		case *staffMeCommand:
+			if r.kind != expect.kind {
+				t.Errorf(
+					"invalid kind, expected %d got %d",
+					expect.kind,
+					r.kind,
+				)
+			}
+
+			if r.identifier != expect.identifier {
+				t.Errorf(
+					"invalid identifier, expected %s got %s",
+					expect.identifier,
+					r.identifier,
+				)
+			}
+
+			if r.hasDueDate != r.hasDueDate {
+				t.Errorf(
+					"invalid due date flag, expected %t got %t",
+					expect.hasDueDate,
+					r.hasDueDate,
+				)
+			}
+			if r.hasDueDate && !r.date.isEqual(expect.date) {
+				t.Errorf(
+					"invalid date, expected %#v got %#v",
+					expect.date,
+					r.date,
+				)
+			}
+		}
+	}
+}
+
+func TestParseRemoveMeCmd(t *testing.T) {
+	inputs := []string{
+		"!removeme task | writing unit tests",
+		"!removeme reminder | writing unit tests",
+	}
+
+	expects := []removeMeCommand{
+		{
+			kind:       commandRemoveMe,
+			list:       token{kind: tokenTask},
+			identifier: "writing unit tests",
+		},
+		{
+			kind:       commandRemoveMe,
+			list:       token{kind: tokenReminder},
+			identifier: "writing unit tests",
+		},
+	}
+
+	for i, input := range inputs {
+		t.Logf("input %d", i)
+		result, err := parseCommand(input)
+		if !err.isOK() {
+			t.Errorf("parsing error: %s", err.details)
+		}
+
+		expect := expects[i]
+		switch r := result.(type) {
+		case *removeMeCommand:
+			if r.kind != expect.kind {
+				t.Errorf(
+					"invalid kind, expected %d got %d",
+					expect.kind,
+					r.kind,
+				)
+			}
+
+			if r.list.kind != expect.list.kind {
+				t.Errorf(
+					"invalid keyword, expected %s got %s",
+					tokenKindString[expect.list.kind],
+					tokenKindString[r.list.kind],
+				)
+			}
+
+			if r.identifier != expect.identifier {
+				t.Errorf(
+					"invalid identifier, expected %s got %s",
+					expect.identifier,
+					r.identifier,
+				)
+			}
 		}
 	}
 }

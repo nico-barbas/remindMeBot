@@ -48,6 +48,7 @@ type (
 		id           int
 		name         string
 		kind         itemKind
+		hasDueDate   bool
 		dueTime      time.Time
 		needReminder bool
 		done         bool
@@ -105,16 +106,24 @@ func (a *app) init() {
 				return err
 			}
 
-			dueTime, timeErr := time.Parse(timeFormat, dueTimeStr)
-			if timeErr != nil {
-				return timeErr
+			var dueTime time.Time
+			hasDueTime := false
+			if dueTimeStr != "" {
+				dueTime, err = time.Parse(timeFormat, dueTimeStr)
+				if err != nil {
+					return err
+				}
+				hasDueTime = true
 			}
 			newItem := item{
 				name:         name,
 				kind:         itemKind(kind),
-				dueTime:      dueTime,
+				hasDueDate:   hasDueTime,
 				needReminder: true,
 				done:         done == 1,
+			}
+			if hasDueTime {
+				newItem.dueTime = dueTime
 			}
 			switch itemKind(kind) {
 			case itemReminder:
@@ -228,26 +237,40 @@ func (a *app) handleCommand(m *discordgo.Message, cmd command) {
 		} else if count == 0 {
 			err = a.registerUser(m.Author)
 			if err != nil {
-				log.Println(err)
+				log.Println("DB access failure: ", err)
 				return
 			}
 		}
 	}
 	user := a.users[m.Author.ID]
-	confirmationMsg, newItem := cmd.execute(user)
-	if newItem != nil {
-		err := a.db.Exec(
-			"INSERT INTO items (id, name, user_id, kind, due_time, done) VALUES (?, ?, ?, ?, ?, ?);",
-			newItem.id,
-			newItem.name,
-			user.uniqueID,
-			newItem.kind,
-			newItem.dueTime.Format(timeFormat),
-			newItem.done,
-		)
-		if err != nil {
-			log.Println(err)
+	confirmationMsg, it := cmd.execute(user)
+	if it != nil {
+		switch cmd.(type) {
+		case *remindMeCommand, *staffMeCommand:
+			dueTimeStr := ""
+			if it.hasDueDate {
+				dueTimeStr = it.dueTime.Format(timeFormat)
+			}
+			err := a.db.Exec(
+				"INSERT INTO items (id, name, user_id, kind, due_time, done) VALUES (?, ?, ?, ?, ?, ?);",
+				it.id,
+				it.name,
+				user.uniqueID,
+				it.kind,
+				dueTimeStr,
+				it.done,
+			)
+			if err != nil {
+				log.Println("DB access failure: ", err)
+			}
+
+		case *removeMeCommand:
+			err := a.db.Exec("DELETE FROM items WHERE id = ?;", it.id)
+			if err != nil {
+				log.Println("DB access failure: ", err)
+			}
 		}
+
 	}
 
 	_, err := a.s.ChannelMessageSendEmbed(m.ChannelID, confirmationMsg)
