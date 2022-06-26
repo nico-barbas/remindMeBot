@@ -82,17 +82,24 @@ func (b *briefMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed,
 	}
 	briefBuilder := strings.Builder{}
 
-	for _, reminder := range u.reminders {
-		briefBuilder.WriteString(":small_orange_diamond: **")
-		briefBuilder.WriteString(reminder.name)
-		briefBuilder.WriteString("**  ||  ")
-		briefBuilder.WriteString(reminder.dueTime.Format(timeFormat))
-		briefBuilder.WriteString("\n  ")
+	if len(u.reminders) > 0 {
+		for _, reminder := range u.reminders {
+			briefBuilder.WriteString(":small_orange_diamond: **")
+			briefBuilder.WriteString(reminder.name)
+			briefBuilder.WriteString("**  ||  ")
+			briefBuilder.WriteString(reminder.dueTime.Format(timeFormat))
+			briefBuilder.WriteString("\n  ")
+		}
+		confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+			Name:  fmt.Sprintf("%s **Reminders:**", bellEmote),
+			Value: strings.Clone(briefBuilder.String()),
+		})
+	} else {
+		confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+			Name:  fmt.Sprintf("%s **Reminders:**", bellEmote),
+			Value: "No active reminders",
+		})
 	}
-	confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
-		Name:  fmt.Sprintf("%s **Reminders:**", bellEmote),
-		Value: strings.Clone(briefBuilder.String()),
-	})
 	briefBuilder.Reset()
 
 	if len(u.tasks) > 0 {
@@ -124,16 +131,16 @@ func (r *remindMeCommand) getKind() commandKind { return r.kind }
 func (r *remindMeCommand) String() string       { return "Remind me!" }
 func (r *remindMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed, it *item) {
 	u.reminders = append(u.reminders, item{
-		id:         theApp.genTaskID(),
+		id:         theApp.genItemID(),
 		name:       r.identifier,
-		kind:       itemTask,
+		kind:       itemReminder,
 		hasDueDate: true,
 		dueTime: time.Date(
 			r.date.year, r.date.month, r.date.day,
 			r.date.hour, r.date.min, 0, 0, time.Local,
 		),
-		needReminder: true,
-		done:         false,
+		alarmCount: 0,
+		done:       false,
 	})
 	it = &u.reminders[len(u.reminders)-1]
 
@@ -149,12 +156,11 @@ func (s *staffMeCommand) getKind() commandKind { return s.kind }
 func (s *staffMeCommand) String() string       { return "Staff me!" }
 func (s *staffMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed, it *item) {
 	u.tasks = append(u.tasks, item{
-		id:           theApp.genTaskID(),
-		name:         s.identifier,
-		kind:         itemReminder,
-		hasDueDate:   s.hasDueDate,
-		needReminder: true,
-		done:         false,
+		id:         theApp.genItemID(),
+		name:       s.identifier,
+		kind:       itemTask,
+		hasDueDate: s.hasDueDate,
+		done:       false,
 	})
 	it = &u.tasks[len(u.tasks)-1]
 	if s.hasDueDate {
@@ -185,6 +191,7 @@ func (r *removeMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed
 				*removed = item
 				if len(u.reminders) > 1 {
 					copy(u.reminders[i-1:], u.reminders[i:])
+					u.reminders = u.reminders[:len(u.reminders)-1]
 				} else {
 					u.reminders = u.reminders[:0]
 				}
@@ -198,6 +205,7 @@ func (r *removeMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed
 				*removed = item
 				if len(u.tasks) > 1 {
 					copy(u.tasks[i-1:], u.tasks[i:])
+					u.tasks = u.tasks[:len(u.tasks)-1]
 				} else {
 					u.tasks = u.tasks[:0]
 				}

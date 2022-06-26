@@ -80,3 +80,12 @@ func (self date) isEqual(d date) bool {
 	}
 	return true
 }
+
+func findItemByName(buf []item, name string) int {
+	for i := range buf {
+		if buf[i].name == name {
+			return i
+		}
+	}
+	return -1
+}

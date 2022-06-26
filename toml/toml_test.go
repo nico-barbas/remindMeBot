@@ -190,7 +190,7 @@ func TestSerializeSimpleStruct(t *testing.T) {
 		Y: 10,
 	}
 
-	expect := "[root]\nX = 10\nY = 10\n"
+	expect := "X = 10\nY = 10\n"
 
 	result, err := Serialize(&input)
 
@@ -209,7 +209,7 @@ func TestSerializeMap(t *testing.T) {
 		"y": 76,
 	}
 
-	expect := "[root]\nx = 22\ny = 76\n"
+	expect := "x = 22\ny = 76\n"
 
 	result, err := Serialize(&input)
 
@@ -219,5 +219,30 @@ func TestSerializeMap(t *testing.T) {
 
 	if result != expect {
 		t.Errorf("Expect %s, got %s", expect, result)
+	}
+}
+
+func TestDeserializeSimpleStruct(t *testing.T) {
+	input := "X = 22\nY = 76\n"
+
+	result := struct {
+		X int
+		Y int
+	}{}
+
+	err := Deserialize(input, &result)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDeserializeMap(t *testing.T) {
+	input := "X = 22\nY = 76\n"
+
+	result := map[string]int{}
+
+	err := Deserialize(input, &result)
+	if err != nil {
+		t.Error(err)
 	}
 }

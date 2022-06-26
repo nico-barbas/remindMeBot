@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"remindMeBot/toml"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,9 @@ const (
 	minBeforeRemind   = 30
 	timeFormat        = time.RFC822Z
 	initItemBufferCap = 20
+
+	reminderAlarm = "Reminder Notification"
+	taskAlarm     = "Task Notification"
 )
 
 var theApp *app
@@ -33,7 +38,17 @@ type (
 		shouldClose chan bool
 		mut         sync.Mutex
 		lastTime    time.Time
-		taskCounter int32
+		config      appConfig
+	}
+
+	appConfig struct {
+		ItemCounter       int32
+		ReminderFrequency int
+
+		AlarmTime struct {
+			First  int
+			Second int
+		}
 	}
 
 	user struct {
@@ -45,13 +60,14 @@ type (
 	}
 
 	item struct {
-		id           int
-		name         string
-		kind         itemKind
-		hasDueDate   bool
-		dueTime      time.Time
-		needReminder bool
-		done         bool
+		id             int
+		name           string
+		kind           itemKind
+		hasDueDate     bool
+		dueTime        time.Time
+		alarmCount     int
+		lastRemindTime time.Time
+		done           bool
 	}
 
 	itemKind int
@@ -64,6 +80,9 @@ const (
 )
 
 func (a *app) init() {
+	configFile, _ := os.ReadFile("./data/config.toml")
+	toml.Deserialize(string(configFile), &a.config)
+
 	userResults, err := a.db.Query("SELECT id, discord_id, name FROM users;")
 	defer userResults.Close()
 	if err != nil {
@@ -89,19 +108,20 @@ func (a *app) init() {
 	}
 
 	for _, u := range a.users {
-		itemResults, err := a.db.Query("SELECT name, kind, due_time, done FROM items WHERE user_id = ?;", u.uniqueID)
+		itemResults, err := a.db.Query("SELECT id, name, kind, due_time, done FROM items WHERE user_id = ?;", u.uniqueID)
 		defer itemResults.Close()
 		if err != nil {
 			log.Panicln(err)
 		}
 
 		err = itemResults.Iterate(func(d types.Document) error {
+			var id int
 			var name string
 			var kind int
 			var dueTimeStr string
 			var done int
 
-			err = document.Scan(d, &name, &kind, &dueTimeStr, &done)
+			err = document.Scan(d, &id, &name, &kind, &dueTimeStr, &done)
 			if err != nil {
 				return err
 			}
@@ -116,14 +136,20 @@ func (a *app) init() {
 				hasDueTime = true
 			}
 			newItem := item{
-				name:         name,
-				kind:         itemKind(kind),
-				hasDueDate:   hasDueTime,
-				needReminder: true,
-				done:         done == 1,
+				id:         id,
+				name:       name,
+				kind:       itemKind(kind),
+				hasDueDate: hasDueTime,
+				done:       done == 1,
 			}
 			if hasDueTime {
 				newItem.dueTime = dueTime
+				remainingTime := int(dueTime.Sub(time.Now()).Minutes())
+				if remainingTime <= a.config.AlarmTime.First && remainingTime > a.config.AlarmTime.Second {
+					newItem.alarmCount = 1
+				} else if remainingTime <= a.config.AlarmTime.Second {
+					newItem.alarmCount = 2
+				}
 			}
 			switch itemKind(kind) {
 			case itemReminder:
@@ -136,6 +162,19 @@ func (a *app) init() {
 		if err != nil {
 			log.Panicln(err)
 		}
+	}
+}
+
+func (a *app) shutdown() {
+	configStr, err := toml.Serialize(&a.config)
+	fmt.Println(a.config)
+	fmt.Println(configStr)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	err = os.WriteFile("./data/config.toml", []byte(configStr), 0644)
+	if err != nil {
+		log.Fatalln(err)
 	}
 }
 
@@ -164,15 +203,73 @@ runLoop:
 }
 
 func (a *app) updateUser(u *user) {
+	now := time.Now()
 	for i := range u.reminders {
 		reminder := &u.reminders[i]
-		remainingMin := reminder.dueTime.Sub(time.Now()).Minutes()
-		if reminder.needReminder && remainingMin <= minBeforeRemind {
-			reminder.needReminder = false
-			a.s.ChannelMessageSend(
-				a.remindChannelID,
-				fmt.Sprintf("<@%s> :bell: %s is in less than 30 minutes (in %d min)", u.id, reminder.name, int(remainingMin)),
-			)
+		timeRem := int(reminder.dueTime.Sub(now).Minutes())
+		if timeRem < 0 {
+			if !reminder.done {
+				reminder.lastRemindTime = now
+				reminder.done = true
+			} else {
+				remindRemaining := time.Since(reminder.lastRemindTime).Minutes()
+				if remindRemaining >= float64(a.config.ReminderFrequency) {
+					reminder.lastRemindTime = now
+					a.s.ChannelMessageSend(
+						a.remindChannelID,
+						fmt.Sprintf("<@%s>", u.id),
+					)
+					remindMsg, _ := a.s.ChannelMessageSendEmbed(
+						a.remindChannelID,
+						&discordgo.MessageEmbed{
+							Type:        discordgo.EmbedTypeRich,
+							Title:       reminderAlarm,
+							Description: fmt.Sprintf("Have you done **%s**?", reminder.name),
+						},
+					)
+					a.s.MessageReactionAdd(
+						a.remindChannelID,
+						remindMsg.ID,
+						"☑",
+					)
+				}
+			}
+		} else {
+			if timeRem <= a.config.AlarmTime.First && timeRem > a.config.AlarmTime.Second {
+				if reminder.alarmCount == 0 {
+					reminder.alarmCount = 1
+
+					a.s.ChannelMessageSend(
+						a.remindChannelID,
+						fmt.Sprintf("<@%s>", u.id),
+					)
+					a.s.ChannelMessageSendEmbed(
+						a.remindChannelID,
+						&discordgo.MessageEmbed{
+							Type:        discordgo.EmbedTypeRich,
+							Title:       reminderAlarm,
+							Description: fmt.Sprintf("**%s** is in less than 120 minutes (~%d)", reminder.name, timeRem),
+						},
+					)
+				}
+			} else if timeRem <= a.config.AlarmTime.Second {
+				if reminder.alarmCount < 2 {
+					reminder.alarmCount = 2
+
+					a.s.ChannelMessageSend(
+						a.remindChannelID,
+						fmt.Sprintf("<@%s>", u.id),
+					)
+					a.s.ChannelMessageSendEmbed(
+						a.remindChannelID,
+						&discordgo.MessageEmbed{
+							Type:        discordgo.EmbedTypeRich,
+							Title:       reminderAlarm,
+							Description: fmt.Sprintf("**%s** is in less than 30 minutes (~%d)", reminder.name, timeRem),
+						},
+					)
+				}
+			}
 		}
 	}
 }
@@ -295,7 +392,46 @@ func (a *app) registerUser(u *discordgo.User) error {
 	return nil
 }
 
-func (a *app) genTaskID() int {
-	taskID := atomic.SwapInt32(&a.taskCounter, a.taskCounter+1)
-	return int(taskID)
+func (a *app) removeItem(u *discordgo.User, itemName string, kind itemKind) {
+	if user, exist := a.users[u.ID]; exist {
+		var removed item
+		switch kind {
+		case itemReminder:
+			index := findItemByName(user.reminders, itemName)
+			if index == -1 {
+				log.Panicf("No item with name %s", itemName)
+				return
+			}
+			removed = user.reminders[index]
+			if len(user.reminders) > 1 {
+				copy(user.reminders[index-1:], user.reminders[index:])
+				user.reminders = user.reminders[:len(user.reminders)-1]
+			} else {
+				user.reminders = user.reminders[:0]
+			}
+
+		case itemTask:
+			index := findItemByName(user.tasks, itemName)
+			if index == -1 {
+				log.Panicf("No item with name %s", itemName)
+				return
+			}
+			removed = user.tasks[index]
+			if len(user.tasks) > 1 {
+				copy(user.tasks[index-1:], user.tasks[index:])
+				user.tasks = user.tasks[:len(user.reminders)-1]
+			} else {
+				user.tasks = user.tasks[:0]
+			}
+		}
+		err := a.db.Exec("DELETE FROM items WHERE id = ?;", removed.id)
+		if err != nil {
+			log.Println("DB access failure: ", err)
+		}
+	}
+}
+
+func (a *app) genItemID() int {
+	itemID := atomic.SwapInt32(&a.config.ItemCounter, a.config.ItemCounter+1)
+	return int(itemID)
 }

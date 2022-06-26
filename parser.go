@@ -362,8 +362,16 @@ const (
 
 	tokenReminder
 	tokenTask
+	tokenEvery
 	tokenToday
 	tokenTomorrow
+	tokenMonday
+	tokenTuesday
+	tokenWednesday
+	tokenThursday
+	tokenFriday
+	tokenSaturday
+	tokenSunday
 )
 
 var tokenKindString = map[tokenKind]string{
@@ -377,13 +385,33 @@ var tokenKindString = map[tokenKind]string{
 	tokenDoubleDash: "tokenDoubleDash",
 	tokenColon:      "tokenColon",
 	tokenSeparator:  "tokenSeparator",
+	tokenReminder:   "tokenReminder",
+	tokenTask:       "tokenTask",
+	tokenEvery:      "tokenEvery",
+	tokenToday:      "tokenToday",
+	tokenTomorrow:   "tokenTomorrow",
+	tokenMonday:     "tokenMonday",
+	tokenTuesday:    "tokenTuesday",
+	tokenWednesday:  "tokenWednesday",
+	tokenThursday:   "tokenThursday",
+	tokenFriday:     "tokenFriday",
+	tokenSaturday:   "tokenSaturday",
+	tokenSunday:     "tokenSunday",
 }
 
 var keywords = map[string]tokenKind{
-	"reminder": tokenReminder,
-	"task":     tokenTask,
-	"today":    tokenToday,
-	"tomorrow": tokenTomorrow,
+	"reminder":  tokenReminder,
+	"task":      tokenTask,
+	"every":     tokenEvery,
+	"today":     tokenToday,
+	"tomorrow":  tokenTomorrow,
+	"monday":    tokenMonday,
+	"tuesday":   tokenTuesday,
+	"wednesday": tokenWednesday,
+	"thursday":  tokenThursday,
+	"friday":    tokenFriday,
+	"saturday":  tokenSaturday,
+	"sunday":    tokenSunday,
 }
 
 func (t token) String() string {
@@ -445,7 +473,7 @@ func (self *parser) scanToken() (result token, err parserError) {
 			result.kind = tokenDash
 		}
 
-	case '|':
+	case ',':
 		result.kind = tokenSeparator
 
 	default:

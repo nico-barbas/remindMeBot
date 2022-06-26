@@ -1,7 +1,5 @@
-taskCounter = 0
-taskReminderFrequency = 30
-
-[reminderAlarmTime]
-firstAlarm = 1
-secondAlarm = 120
-thridAlarm = 30
+ItemCounter = 5
+ReminderFrequency = 1
+[AlarmTime]
+First = 120
+Second = 30

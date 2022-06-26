@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+type serializer struct {
+	builder strings.Builder
+	depth   int
+}
+
 func Serialize(data interface{}) (result string, err error) {
 	value := reflect.ValueOf(data)
 	// if !value.CanAddr() {
@@ -13,48 +18,57 @@ func Serialize(data interface{}) (result string, err error) {
 	// 	return
 	// }
 	v := value.Elem()
-	b := strings.Builder{}
-	serializeData(&b, "", "root", v)
-	result = b.String()
+	s := serializer{
+		builder: strings.Builder{},
+	}
+	serializeData(&s, "", "", v)
+	result = s.builder.String()
 	return
 }
 
-func serializeData(b *strings.Builder, path, name string, v reflect.Value) {
+func serializeData(s *serializer, path, name string, v reflect.Value) {
 	k := v.Kind()
 	switch k {
 	case reflect.Map:
-		serializeMap(b, path, name, v)
+		serializeMap(s, path, name, v)
 	case reflect.Array:
 	case reflect.Struct:
-		serializeStruct(b, path, name, v)
+		serializeStruct(s, path, name, v)
 	default:
 		if isNativeType(k) {
-			serializeNativeValue(b, name, v)
+			serializeNativeValue(s, name, v)
 		} else {
 			return
 		}
 	}
 }
 
-func serializeStruct(b *strings.Builder, path, name string, v reflect.Value) {
+func serializeStruct(s *serializer, path, name string, v reflect.Value) {
 	t := v.Type()
 
 	currentPath := path + name
-	b.WriteRune('[')
-	b.WriteString(currentPath)
-	b.WriteString("]\n")
+	if s.depth > 0 {
+		s.builder.WriteRune('[')
+		s.builder.WriteString(currentPath)
+		s.builder.WriteString("]\n")
+	}
+	s.depth += 1
+
 	for i := 0; i < v.NumField(); i += 1 {
 		fieldVal := v.Field(i)
 		fieldInfo := t.Field(i)
-		serializeData(b, currentPath, fieldInfo.Name, fieldVal)
+		serializeData(s, currentPath, fieldInfo.Name, fieldVal)
 	}
 }
 
-func serializeMap(b *strings.Builder, path, name string, v reflect.Value) {
+func serializeMap(s *serializer, path, name string, v reflect.Value) {
 	currentPath := path + name
-	b.WriteString("[")
-	b.WriteString(currentPath)
-	b.WriteString("]\n")
+	if s.depth > 0 {
+		s.builder.WriteString("[")
+		s.builder.WriteString(currentPath)
+		s.builder.WriteString("]\n")
+	}
+	s.depth += 1
 
 	i := 0
 	iter := v.MapRange()
@@ -69,38 +83,38 @@ func serializeMap(b *strings.Builder, path, name string, v reflect.Value) {
 		} else {
 			keyName = key.String()
 		}
-		serializeData(b, currentPath, keyName, value)
+		serializeData(s, currentPath, keyName, value)
 		i += 1
 	}
 }
 
 // func serializeArray()
 
-func serializeNativeValue(b *strings.Builder, name string, v reflect.Value) {
-	b.WriteString(name)
-	b.WriteString(" = ")
+func serializeNativeValue(s *serializer, name string, v reflect.Value) {
+	s.builder.WriteString(name)
+	s.builder.WriteString(" = ")
 
 	t := v.Type()
 	switch t.Kind() {
 	case reflect.Bool:
 		bl := v.Bool()
-		b.WriteString(strconv.FormatBool(bl))
+		s.builder.WriteString(strconv.FormatBool(bl))
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		integer := v.Int()
-		b.WriteString(strconv.Itoa(int(integer)))
+		s.builder.WriteString(strconv.Itoa(int(integer)))
 
 	case reflect.String:
 		str := v.String()
-		b.WriteRune('"')
-		b.WriteString(str)
-		b.WriteRune('"')
+		s.builder.WriteRune('"')
+		s.builder.WriteString(str)
+		s.builder.WriteRune('"')
 
 	case reflect.Float32, reflect.Float64:
 		f := v.Float()
-		b.WriteString(strconv.FormatFloat(f, 'f', 4, 32))
+		s.builder.WriteString(strconv.FormatFloat(f, 'f', 4, 32))
 	}
-	b.WriteRune('\n')
+	s.builder.WriteRune('\n')
 }
 
 func isNativeType(k reflect.Kind) bool {
