@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -9,9 +10,12 @@ import (
 	"github.com/genjidb/genji"
 )
 
-const botToken = "OTg5NjM0NTczMjM3Mzc0OTc2.GDTNFt.7wNZR3_WGMLpI5rUvtB1ZSByCzXEcSslcknitU"
+var botToken string
 
 func main() {
+	tokenStr := flag.String("key", "invalid key", "the remindMeBot token string")
+	botToken = *tokenStr
+
 	db, err := genji.Open("./data/remindme")
 	if err != nil {
 		log.Panicln(err)

@@ -58,12 +58,11 @@ func parseCommand(input string) (result command, err parserError) {
 					return
 				}
 
-			case commandShowTodo:
-				// result, err = parser.parseShowTodoCmd()
-
-			case commandShowReminders:
-				// result, err = parser.parseShowRemindersCmd()
-
+			case commandHelpMe:
+				result, err = parser.parseHelpMeCmd()
+				if !err.isOK() {
+					return
+				}
 			}
 		} else {
 			err = parserError{
@@ -198,6 +197,15 @@ func (self *parser) parseRemoveMeCmd() (result *removeMeCommand, err parserError
 	}
 	result.sepToken = self.current
 	result.identifier, err = self.parseIdentifier()
+	return
+}
+
+func (self *parser) parseHelpMeCmd() (result *helpMeCommand, err parserError) {
+	result = &helpMeCommand{
+		kind:     commandHelpMe,
+		token:    self.previous,
+		cmdToken: self.current,
+	}
 	return
 }
 

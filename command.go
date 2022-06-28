@@ -24,17 +24,15 @@ const (
 	commandRemindMe
 	commandStaffMe
 	commandRemoveMe
-	commandShowTodo
-	commandShowReminders
+	commandHelpMe
 )
 
 var commandKeywords = map[string]commandKind{
-	"briefme":    commandBriefMe,
-	"remindme":   commandRemindMe,
-	"staffme":    commandStaffMe,
-	"removeme":   commandRemoveMe,
-	"showtodo":   commandShowTodo,
-	"showremind": commandShowReminders,
+	"briefme":  commandBriefMe,
+	"remindme": commandRemindMe,
+	"staffme":  commandStaffMe,
+	"removeme": commandRemoveMe,
+	"helpme":   commandHelpMe,
 }
 
 type (
@@ -70,6 +68,12 @@ type (
 		list       token
 		sepToken   token
 		identifier string
+	}
+
+	helpMeCommand struct {
+		kind     commandKind
+		token    token
+		cmdToken token
 	}
 )
 
@@ -229,5 +233,46 @@ func (r *removeMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed
 	} else {
 		confirmation.Description = fmt.Sprintf("%s %s does not exist", listName, r.identifier)
 	}
+	return
+}
+
+func (h *helpMeCommand) getKind() commandKind { return h.kind }
+func (h *helpMeCommand) String() string       { return "Help me!" }
+func (h *helpMeCommand) execute(u *user) (confirmation *discordgo.MessageEmbed, it *item) {
+	b := strings.Builder{}
+
+	b.WriteString("**RemindMeBot is a scheduling and task management tool.**\n")
+	b.WriteString("To start using it, enter a valid command with their required arguments from the list below.")
+	b.WriteString("Every arguments must be comma separated.\n")
+	b.WriteString("Dates follow one the following format: \n")
+	b.WriteString("`h:min`, `dd-mm-yy`, `dd-mm-yy h:min`\n\n") //`[day keywords]`, `[day keywords] h:min`
+	// b.WriteString("The valid daye keywords are:\n`today`, `tomorrow`, `monday` `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`,`sunday`\n")
+
+	confirmation = &discordgo.MessageEmbed{
+		Type:        discordgo.EmbedTypeRich,
+		Title:       h.String(),
+		Description: strings.Clone(b.String()),
+	}
+
+	confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+		Name:  "`!briefme`",
+		Value: "No required arguments.\nDisplay all the active reminders and tasks of the user",
+	})
+	confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+		Name:  "`!remindme`",
+		Value: "`name of the reminder`, `date`.\nAdd a reminder for the user",
+	})
+	confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+		Name:  "`!staffme`",
+		Value: "`name of the task`, (optional)`date`.\nAdd a task for the user",
+	})
+	confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+		Name:  "`!removeme`",
+		Value: "`type of the item`, `name of the task`.\nRemove either a task or a reminder for the user",
+	})
+	confirmation.Fields = append(confirmation.Fields, &discordgo.MessageEmbedField{
+		Name:  "`!helpme`",
+		Value: "No required arguments.\nDisplay the commands and how to use the bot",
+	})
 	return
 }

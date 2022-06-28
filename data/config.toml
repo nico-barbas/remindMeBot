@@ -1,5 +1,5 @@
-ItemCounter = 5
-ReminderFrequency = 1
+ItemCounter = 0
+ReminderFrequency = 30
 [AlarmTime]
 First = 120
 Second = 30
